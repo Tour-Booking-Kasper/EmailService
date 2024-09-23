@@ -3,6 +3,7 @@ using RabbitMQ.Client.Events;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Newtonsoft.Json;
 
 public class Consumer
 {
@@ -15,14 +16,14 @@ public class Consumer
     public string DeadLetterQueue { get; set; }
 
     // Constructor til at initialisere properties
-    public Consumer(string hostName, string exchangeName, string queueName, string routingKey)
+    public Consumer(string hostName, string exchangeName, string queueName, string routingKey, string deadLetterExchange, string deadLetterQueue)
     {
         HostName = hostName;
         ExchangeName = exchangeName;
         QueueName = queueName;
         RoutingKey = routingKey;
-        DeadLetterExchange
-        DeadLetterQueue
+        DeadLetterExchange = deadLetterExchange;
+        DeadLetterQueue = deadLetterQueue;
     }
 
     //Consume metode til at modtage beskeder fra RabbitMQ, samt at validere beskederne
@@ -33,30 +34,36 @@ public class Consumer
         using (var connection = factory.CreateConnection())
         using (var channel = connection.CreateModel())
         {
-            // Opretter en dead letter exchange og queue.
-            channel.ExchangeDeclare(exchange: DeadLetterExchange, type: "direct");
-            channel.QueueDeclare(queue: DeadLetterQueue, durable: false, exclusive: false, autoDelete: false, arguments: null);
+        //Opretter dead letter exchange
+        channel.ExchangeDeclare(exchange: DeadLetterExchange, type: "direct");
 
-            channel.ExchangeDeclare(exchange: this.ExchangeName, type: "topic");
-            var queueArguments = new Dictionary<string, object>
-            {
-                { "x-dead-letter-exchange", DeadLetterExchange }
-            };
-            channel.QueueDeclare(queue: this.QueueName, durable: false, exclusive: false, autoDelete: false, arguments: queueArguments);
-            channel.QueueBind(queue: this.QueueName, exchange: this.ExchangeName, routingKey: this.RoutingKey);
+        //Opretter dead letter queue
+        channel.QueueDeclare(queue: DeadLetterQueue, durable: false, exclusive: false, autoDelete: false, arguments: null);
 
-            Console.WriteLine(" [*] Waiting for all tour messages for Back Office...");
+        // Binder dead letter queue sammen med dead letter exchange
+        channel.QueueBind(queue: DeadLetterQueue, exchange: DeadLetterExchange, routingKey: "");
 
-            //Opretter en consumer, som lytter efter beskeder på den angivne kø, i dette tilfælde, backOfficeQueue
+        // Opretter 'main' exchange og queue, og angiver dead letter exchange og queue som argumenter main queue
+        channel.ExchangeDeclare(exchange: this.ExchangeName, type: "topic");
+        channel.QueueDeclare(queue: this.QueueName, durable: false, exclusive: false, autoDelete: false, arguments: new Dictionary<string, object>
+        {
+            { "x-dead-letter-exchange", DeadLetterExchange }
+        });
+
+        // Binder main queue og main exchange
+        channel.QueueBind(queue: this.QueueName, exchange: this.ExchangeName, routingKey: this.RoutingKey);
+
+            //Opretter en consumer, som lytter efter beskeder på main queue, i dette tilfælde, backOfficeQueue
             var consumer = new EventingBasicConsumer(channel);
             consumer.Received += (model, ea) =>
             {
                 var body = ea.Body.ToArray();
                 var message = Encoding.UTF8.GetString(body);
+                var messageObject = JsonConvert.DeserializeObject<Message>(message);
                 
                 var validation = IsMessageInvalid(messageObject);
                 
-                //Hvis den ikke er valid, skriver vi det til konsollen, og sender beskeden til dead letter queue.
+                //Hvis den ikke er valid, skriver vi det til konsollen, og sender beskeden til dead letter exchange.
                 if (!validation.Valid)
                 {
                     var invalidMessage = Encoding.UTF8.GetBytes(message);
