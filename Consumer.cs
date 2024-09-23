@@ -71,12 +71,12 @@ public class Consumer
                 {
                     var invalidMessage = Encoding.UTF8.GetBytes(message);
                     channel.BasicPublish(exchange: DeadLetterExchange, routingKey: "", body: invalidMessage);
-                    Console.WriteLine(" [!] Invalid message received. Sent to dead letter queue.");
+                    Console.WriteLine($" [!] Invalid message: {message} sent to dead letter queue.");
                     return;
                 }
 
                 //Hvis beskeden er valid, skriver vi den til konsollen.
-                Console.WriteLine($" [x] Processed message: {message}");
+                Console.WriteLine($" [x] Recieved valid booking: {message}");
             };
 
             channel.BasicConsume(queue: this.QueueName, autoAck: true, consumer: consumer);
