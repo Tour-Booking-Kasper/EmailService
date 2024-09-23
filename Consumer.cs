@@ -40,18 +40,20 @@ public class Consumer
         //Opretter dead letter queue
         channel.QueueDeclare(queue: DeadLetterQueue, durable: false, exclusive: false, autoDelete: false, arguments: null);
 
-        // Binder dead letter queue sammen med dead letter exchange
+        //Binder dead letter queue sammen med dead letter exchange
         channel.QueueBind(queue: DeadLetterQueue, exchange: DeadLetterExchange, routingKey: "");
 
-        // Opretter 'main' exchange og queue, og angiver dead letter exchange og queue som argumenter main queue
+        //Opretter 'main' exchange og queue, og angiver dead letter exchange og queue som argumenter main queue
         channel.ExchangeDeclare(exchange: this.ExchangeName, type: "topic");
         channel.QueueDeclare(queue: this.QueueName, durable: false, exclusive: false, autoDelete: false, arguments: new Dictionary<string, object>
         {
             { "x-dead-letter-exchange", DeadLetterExchange }
         });
 
-        // Binder main queue og main exchange
+        //Binder main queue og main exchange
         channel.QueueBind(queue: this.QueueName, exchange: this.ExchangeName, routingKey: this.RoutingKey);
+
+        Console.WriteLine(" [*] Waiting for bookings...");
 
             //Opretter en consumer, som lytter efter beskeder på main queue, i dette tilfælde, backOfficeQueue
             var consumer = new EventingBasicConsumer(channel);
@@ -61,6 +63,7 @@ public class Consumer
                 var message = Encoding.UTF8.GetString(body);
                 var messageObject = JsonConvert.DeserializeObject<Message>(message);
                 
+                //Kalder isMessageInvalid metoden, som returnerer et MessageValidation objekt
                 var validation = IsMessageInvalid(messageObject);
                 
                 //Hvis den ikke er valid, skriver vi det til konsollen, og sender beskeden til dead letter exchange.
